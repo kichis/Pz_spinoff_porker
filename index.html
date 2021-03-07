@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poker</title>
+</head>
+
+<body>
+
+    <h1>持ち札</h1>
+    <p id="field"></p>
+    <h1>手役</h1>
+    <p id="answer"></p>
+
+    <script>
+// five card
+
+        // [渡されるデータ]
+        // 1.カードは5枚
+        // 2.絵柄(suit)は、
+        //      S (= Spade) 
+        //      H (= Heart) 
+        //      D (= Diamond) 
+        //      C (= Club)
+        //  数字(number)は、
+        //      2 3 4 5 6 7 8 9 10 J Q K A
+        //  jokerは、
+        //      JK
+        //  joker以外、1枚のカードは連続する絵柄と数字の組み合わせで表現される。(例：H2)(例：JK)
+        // 3.5枚のカードは間に半角スペースが入った文字列として渡される。(例：C10 S5 D9 H7 DK)
+
+        // [準備 =======================================出題者側のコード=========================================]
+        const suits = ["S", "H", "D", "C"]
+        const numbers = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
+        const joker = "JK"
+        let options = []
+        for(i= 0; i<=3; i++){
+            for(let j=0; j<=12; j++){
+                let pair = suits[i] + numbers[j]
+                options.push(pair)
+            }
+        }
+        options.push(joker) // option = "S2,S3,S4,S5,S6,S7,S8,S9,S10,SJ,SQ,SK,SA,H2,H3,H4,H5,H6,H7,H8,H9,H10,HJ,HQ,HK,HA,D2,D3,D4,D5,D6,D7,D8,D9,D10,DJ,DQ,DK,DA,C2,C3,C4,C5,C6,C7,C8,C9,C10,CJ,CQ,CK,CA,JK"
+        
+        const makeData = (option)=>{
+            let result = []
+            for(let k = 1; k <= 5; k++){
+                let index = Math.floor(Math.random() * 53) // 0 ~ 52
+                let ele = options[index]
+                result.includes(ele) ? k-- : result.push(ele)
+            }
+            return result.join(" ")
+        }    
+        
+        // [渡される手役]
+        let data = makeData()
+
+        // [判定 =======================================ここからが回答者のコード=========================================]
+        // data = "SQ HA JK HK DJ" //検証用
+        document.querySelector("#field").innerHTML = data //検証用
+
+
+        // 1, データを整える
+
+        // 数字(number)のうち、アルファベット表記になっているものを数字に置換する(※ただし、Aだけは強さ順に合わせて14にする)
+        const transformAlp2Num = (d)=>{
+            const transforms = [
+                [/A/g, '14'],       
+                [/J(?!K)/g, '11'], // x(?!y) = 否定先読み: xの後にyが続かないxのみマッチ
+                [/Q/g, '12'],
+                [/(?<!J)K/g, '13'] // (?<!y)x = 否定後読み: xの前にyが続かないxのみマッチ / (?<=y)x = 後読み: xの前にyがあるxのみマッチ などもある
+            ]
+            transforms.map( x => { d = d.replace(x[0], x[1])} ) // forEachのように処理だけする(新しい配列は作らない)
+            return d
+        }
+        data = transformAlp2Num(data).split(" ") // ["S12", "H14", "JK", "H13", "D11"]
+
+        // カードにjokerが含まれていれば、dataから削除し、JKflgをtrueにする
+        const splitJK = (d)=>{
+            let indexOfJK = d.indexOf("JK")
+            let flg = false
+            if(indexOfJK >= 0){
+                d.splice(indexOfJK, 1)
+                flg = true
+            }       
+            return [d, flg]
+        }
+        [data, JKflg] = splitJK(data) // ["S12", "H14", "H13", "D11"], true
+
+        // 1枚のカードを絵柄と数字に分けた配列にして、２次元配列にする
+        const divideAlpNum = (d) => {
+            let result = d.map( x => {
+                let a = x.substr(0, 1)
+                let b = x.substr(1)
+                return [a, b]
+            })
+            return result
+        } 
+        data = divideAlpNum(data) // [  ["S", "12"], ["H", "14"], ["H", "13"], ["D", "11"] ]
+        
+
+        // 2, dataの内容を調べる
+
+        // 条件1: 全てのカードの絵柄が同じか (jokerの有無関係なし)
+        const isSame5Alp = (d) => {
+            let benchmark = d[0][0]
+            return d.every( ele => ele[0] === benchmark )
+        }    
+        const sameAlpFlg = isSame5Alp(data) // false
+        
+        // 条件2: 全てのカードは連続する数字か (jokerの有無関係アリ)    
+        // 数字部分だけ入った配列(昇順) (注：sort()だと文字列変換されてしまうので、数字の桁合わせ->sort()->数値化 している)
+        let nums = data.map(x => ('00' + x[1]).slice(-2)).sort().map(Number)  // [11, 12, 13, 14]
+
+        // 引数の配列の数字が連続しているか調べる
+        const isContinueousNums = (numArray) => {
+            let flg = true
+            // numArrayの隣り合う要素の差分を比べる。
+            // 差分が全て1ずつ増えていれば、flg=trueのまま。そうでなければflg=false で返される
+            numArray.reduce((acc, curr) => {
+                curr - acc == 1 ? true : flg =false
+                return curr
+            })
+            return flg
+        }
+        // (jokerが含まれている場合) 各要素間に順番に -1 あるいは +1 した要素を1つ挿入 => isContinueousNums()で判定 を繰り返す
+        const isContinueousWithJK = (numArray) => {
+            let array = Array.from(numArray)
+            array.push(numArray[3]+1)
+            flg = isContinueousNums(array)
+            // flgがtrueになった時点で返す(関数を抜ける)
+            if(flg){
+                return flg
+            }          
+            for(let i = 0; i <= 3; i++){
+                let array = Array.from(numArray)
+                array.splice(i, 0, array[i]-1)
+                flg = isContinueousNums(array)
+                // flgがtrueになった時点で返す(for文を抜ける)
+                if(flg){
+                    return flg
+                } 
+            }
+            return flg
+        }
+
+        const continuNumFlg = JKflg ? isContinueousWithJK(nums) : isContinueousNums(nums) // true
+
+        // 条件3: 同じ数字の枚数をカウント
+        const countSameNum = (numArray) => {      
+            let set = new Set(numArray)
+            return [set, set.size]
+        }
+
+        let [set, numSame] = countSameNum(nums)
+        
+        // switch case 3 の判定のための関数
+        const judgeCase3 = (numArray, set) => {
+            let count = []
+            for (var value of set) {
+                count.push(numArray.filter( ele =>  ele == value ).length)
+            }
+            // console.log(count);
+            return count
+        }
+
+        let result
+        
+        // 条件1.および2.に関わる手役の判定 
+        if (sameAlpFlg && continuNumFlg) {
+            // jorkerなしのストレートフラッシュは合致しないかも
+            let sum = nums.reduce((acc, current) => { return acc + current });
+            result = (sum >= 46) ? "ロイヤルストレートフラッシュ" : "ストレートフラッシュ"
+        } else if (sameAlpFlg) {
+            result = "フラッシュ"
+        } else if (continuNumFlg) {
+            result = "ストレート"
+        }else{
+        }
+        
+        // 条件3.に関わる手役の判定 
+        switch (numSame) {
+            case 4:
+                result = "ワンペア"
+                break;
+            case 3:
+                let judge3 = judgeCase3(nums, set).sort()
+                // console.log(judge3)
+                result = (JKflg && (judge3[2] == 2)) ? "ツウペア" : "スリーカード"
+                break;
+            case 2:
+                let judge2 = (nums[0] == nums[1]) && (nums[nums.length - 2] == nums[nums.length-1])
+                result = judge2 ? "フルハウス" : "フォアカード"
+                break;
+            default:
+                // jorkerの場合が抜けている
+                result = "役なし"
+        }
+
+        console.log(result)
+        document.querySelector("#answer").innerHTML = result //検証用
+    </script>
+</body>
+
+</html>
